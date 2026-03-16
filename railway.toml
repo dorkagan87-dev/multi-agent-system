@@ -1,0 +1,40 @@
+# Railway deployment configuration
+# Each service is deployed separately in the Railway dashboard.
+# This file documents the settings — set them in Railway UI or via railway CLI.
+#
+# SERVICES TO CREATE IN RAILWAY:
+#   1. postgres   → Add from Railway template (managed PostgreSQL)
+#   2. redis      → Add from Railway template (managed Redis)
+#   3. api        → Docker build, Dockerfile.api
+#   4. worker     → Docker build, Dockerfile.worker
+#   5. web        → Docker build, Dockerfile.web
+#
+# See DEPLOY.md for step-by-step instructions.
+
+[build]
+builder = "DOCKERFILE"
+
+[[services]]
+name = "api"
+dockerfile = "Dockerfile.api"
+
+[services.deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+[[services]]
+name = "worker"
+dockerfile = "Dockerfile.worker"
+
+[services.deploy]
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
+
+[[services]]
+name = "web"
+dockerfile = "Dockerfile.web"
+
+[services.deploy]
+restartPolicyType = "ON_FAILURE"

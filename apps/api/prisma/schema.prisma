@@ -1,0 +1,602 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum AgentProvider {
+  OPENAI
+  ANTHROPIC
+  GOOGLE
+  MISTRAL
+  COHERE
+  CUSTOM
+}
+
+enum AgentStatus {
+  IDLE
+  BUSY
+  ERROR
+  DISABLED
+  RATE_LIMITED
+}
+
+enum ProjectStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum TaskStatus {
+  PENDING
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+  BLOCKED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ToolType {
+  WEB_SEARCH
+  CODE_EXECUTION
+  FILE_SYSTEM
+  HTTP_REQUEST
+  DATABASE_QUERY
+  EMAIL
+  CUSTOM
+}
+
+enum MemoryScope {
+  AGENT_GLOBAL
+  PROJECT
+  TASK
+}
+
+enum PostType {
+  TASK_COMPLETE
+  INSIGHT
+  ANNOUNCEMENT
+  QUESTION
+  COLLABORATION_REQUEST
+}
+
+enum ReactionType {
+  LIKE
+  INSIGHTFUL
+  AGREE
+  CELEBRATE
+}
+
+// ── Users & Auth ───────────────────────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String?
+  passwordHash String?
+  role         UserRole  @default(MEMBER)
+  avatarUrl    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastLoginAt  DateTime?
+
+  apiKeys            ApiKey[]
+  agents             AgentRegistration[]
+  projectMemberships ProjectMember[]
+  ownedProjects      Project[]           @relation("ProjectOwner")
+  auditLogs          AuditLog[]
+  optimizationRuns   OptimizationRun[]
+  templates          ProjectTemplate[]   @relation("UserTemplates")
+
+  @@map("users")
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  userId     String
+  name       String
+  keyHash    String    @unique
+  keyPrefix  String
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("api_keys")
+}
+
+// ── Agent Registry ─────────────────────────────────────────────────────────────
+
+model AgentRegistration {
+  id          String        @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  provider    AgentProvider
+  modelId     String
+
+  // imported assistant/agent ID from the provider (e.g. OpenAI Assistant ID)
+  providerAgentId String?
+
+  status AgentStatus @default(IDLE)
+
+  encryptedApiKey String
+  apiKeyIv        String
+
+  systemPrompt     String? @db.Text
+  temperature      Float   @default(0.7)
+  maxTokensPerTurn Int     @default(4096)
+  maxTurns         Int     @default(20)
+
+  dailyTokenBudget  Int?
+  tokensUsedToday   Int       @default(0)
+  budgetResetAt     DateTime?
+
+  maxConcurrentTasks Int @default(1)
+  currentTaskCount   Int @default(0)
+
+  // Avatar/persona for the virtual office
+  avatarUrl   String?
+  jobTitle    String?
+  department  String?
+
+  // Social / Moltbook fields
+  bio             String?  @db.Text
+  isPublic        Boolean  @default(true)
+  reputationScore Float    @default(0)
+  followerCount   Int      @default(0)
+  followingCount  Int      @default(0)
+  postCount       Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User              @relation(fields: [userId], references: [id])
+  toolGrants   AgentToolGrant[]
+  memories     AgentMemory[]
+  executions   TaskExecution[]
+  capabilities AgentCapability[]
+  sentMessages AgentMessage[]    @relation("SentMessages")
+  posts        AgentPost[]
+  reactions    AgentReaction[]
+  comments     AgentComment[]
+  following    AgentFollow[]                    @relation("AgentFollowing")
+  followers    AgentFollow[]                    @relation("AgentFollowers")
+  optimizationRecommendations OptimizationRecommendation[]
+  performanceSnapshots        AgentPerformanceSnapshot[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("agent_registrations")
+}
+
+model AgentCapability {
+  id      String            @id @default(cuid())
+  agentId String
+  name    String
+
+  agent AgentRegistration @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, name])
+  @@map("agent_capabilities")
+}
+
+// ── Tool Registry ──────────────────────────────────────────────────────────────
+
+model Tool {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  displayName     String
+  description     String   @db.Text
+  type            ToolType
+  inputSchema     Json
+  configTemplate  Json?
+  requiresSandbox Boolean  @default(false)
+  isBuiltIn       Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  grants AgentToolGrant[]
+
+  @@map("tools")
+}
+
+model AgentToolGrant {
+  id        String   @id @default(cuid())
+  agentId   String
+  toolId    String
+  config    Json?
+  grantedAt DateTime @default(now())
+
+  agent AgentRegistration @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  tool  Tool              @relation(fields: [toolId], references: [id])
+
+  @@unique([agentId, toolId])
+  @@map("agent_tool_grants")
+}
+
+// ── Project Templates ──────────────────────────────────────────────────────────
+
+model ProjectTemplate {
+  id          String   @id @default(cuid())
+  userId      String?  // null = built-in template available to everyone
+  name        String
+  description String   @db.Text
+  goal        String   @db.Text
+  category    String   @default("general")
+  icon        String   @default("📋")
+  isBuiltIn   Boolean  @default(false)
+  useCount    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner User?                   @relation("UserTemplates", fields: [userId], references: [id])
+  tasks ProjectTemplateTask[]
+
+  @@index([userId])
+  @@index([isBuiltIn])
+  @@map("project_templates")
+}
+
+model ProjectTemplateTask {
+  id                 String        @id @default(cuid())
+  templateId         String
+  title              String
+  description        String        @db.Text
+  acceptanceCriteria String?       @db.Text
+  priority           TaskPriority  @default(MEDIUM)
+  department         String?
+  suggestedRole      String?
+  order              Int           @default(0)
+
+  template ProjectTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@map("project_template_tasks")
+}
+
+// ── Projects ───────────────────────────────────────────────────────────────────
+
+model Project {
+  id          String        @id @default(cuid())
+  ownerId     String
+  name        String
+  description String?       @db.Text
+  goal        String        @db.Text
+  status      ProjectStatus @default(DRAFT)
+  deadline    DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  completedAt DateTime?
+
+  owner   User            @relation("ProjectOwner", fields: [ownerId], references: [id])
+  members ProjectMember[]
+  tasks   Task[]
+  memories AgentMemory[]  @relation("ProjectMemories")
+  messages AgentMessage[]
+
+  @@index([ownerId])
+  @@index([status])
+  @@map("projects")
+}
+
+model ProjectMember {
+  projectId String
+  userId    String
+  role      UserRole @default(MEMBER)
+  joinedAt  DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, userId])
+  @@map("project_members")
+}
+
+// ── Tasks ──────────────────────────────────────────────────────────────────────
+
+model Task {
+  id             String       @id @default(cuid())
+  projectId      String
+  parentTaskId   String?
+  title          String
+  description    String       @db.Text
+  acceptanceCriteria String?  @db.Text
+  status         TaskStatus   @default(PENDING)
+  priority       TaskPriority @default(MEDIUM)
+  assignedAgentId String?
+  queueJobId     String?
+  maxRetries     Int          @default(3)
+  retryCount     Int          @default(0)
+  scheduledAt    DateTime?
+  deadline       DateTime?
+  output         Json?
+  outputSummary  String?      @db.Text
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  startedAt      DateTime?
+  completedAt    DateTime?
+
+  project    Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parentTask Task?            @relation("SubTasks", fields: [parentTaskId], references: [id])
+  subTasks   Task[]           @relation("SubTasks")
+  blockedBy  TaskDependency[] @relation("DependentTask")
+  blocks     TaskDependency[] @relation("BlockingTask")
+  executions TaskExecution[]
+
+  @@index([projectId])
+  @@index([status])
+  @@index([assignedAgentId])
+  @@map("tasks")
+}
+
+model TaskDependency {
+  dependentTaskId String
+  blockingTaskId  String
+
+  dependent Task @relation("DependentTask", fields: [dependentTaskId], references: [id], onDelete: Cascade)
+  blocking  Task @relation("BlockingTask", fields: [blockingTaskId], references: [id], onDelete: Cascade)
+
+  @@id([dependentTaskId, blockingTaskId])
+  @@map("task_dependencies")
+}
+
+// ── Execution ──────────────────────────────────────────────────────────────────
+
+model TaskExecution {
+  id               String     @id @default(cuid())
+  taskId           String
+  agentId          String
+  attempt          Int        @default(1)
+  status           TaskStatus
+  promptTokens     Int        @default(0)
+  completionTokens Int        @default(0)
+  totalCost        Float      @default(0)
+  turns            Int        @default(0)
+  startedAt        DateTime   @default(now())
+  completedAt      DateTime?
+  errorMessage     String?    @db.Text
+  errorCode        String?
+
+  task  Task              @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  agent AgentRegistration @relation(fields: [agentId], references: [id])
+  logs  ExecutionLog[]
+
+  @@index([taskId])
+  @@index([agentId])
+  @@map("task_executions")
+}
+
+model ExecutionLog {
+  id          String   @id @default(cuid())
+  executionId String
+  level       String
+  message     String   @db.Text
+  data        Json?
+  timestamp   DateTime @default(now())
+
+  execution TaskExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([executionId])
+  @@index([timestamp])
+  @@map("execution_logs")
+}
+
+// ── Agent Memory ───────────────────────────────────────────────────────────────
+
+model AgentMemory {
+  id        String      @id @default(cuid())
+  agentId   String
+  projectId String?
+  scope     MemoryScope
+  key       String
+  value     Json
+  content   String?     @db.Text  // Rich text content for full-text search & RAG
+  tags      String[]    @default([])
+  source    String?     // 'agent' | 'auto_extract' | 'human'
+  expiresAt DateTime?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  agent   AgentRegistration @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  project Project?          @relation("ProjectMemories", fields: [projectId], references: [id])
+
+  @@unique([agentId, projectId, scope, key])
+  @@index([agentId, scope])
+  @@index([agentId, updatedAt(sort: Desc)])
+  @@map("agent_memories")
+}
+
+// ── Agent-to-Agent Messaging (Virtual Office) ──────────────────────────────────
+
+model AgentMessage {
+  id          String   @id @default(cuid())
+  fromAgentId String
+  toAgentId   String?  // null = broadcast to project room
+  projectId   String
+  content     String   @db.Text
+  metadata    Json?
+  timestamp   DateTime @default(now())
+
+  fromAgent AgentRegistration  @relation("SentMessages", fields: [fromAgentId], references: [id])
+  project   Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([fromAgentId])
+  @@map("agent_messages")
+}
+
+// ── Moltbook Social Graph ──────────────────────────────────────────────────────
+
+model AgentFollow {
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+
+  follower  AgentRegistration @relation("AgentFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  following AgentRegistration @relation("AgentFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+  @@map("agent_follows")
+}
+
+model AgentPost {
+  id        String   @id @default(cuid())
+  authorId  String
+  content   String   @db.Text
+  postType  PostType @default(INSIGHT)
+  projectId String?
+  taskId    String?
+  tags      String[]
+  isPublic  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  author    AgentRegistration @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  reactions AgentReaction[]
+  comments  AgentComment[]
+
+  @@index([authorId])
+  @@index([createdAt])
+  @@index([postType])
+  @@index([tags])
+  @@map("agent_posts")
+}
+
+model AgentReaction {
+  id        String       @id @default(cuid())
+  agentId   String
+  postId    String
+  type      ReactionType @default(LIKE)
+  createdAt DateTime     @default(now())
+
+  agent AgentRegistration @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  post  AgentPost         @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, postId])
+  @@index([postId])
+  @@map("agent_reactions")
+}
+
+model AgentComment {
+  id        String   @id @default(cuid())
+  authorId  String
+  postId    String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  author AgentRegistration @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  post   AgentPost         @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@map("agent_comments")
+}
+
+// ── Self-Optimization Engine ───────────────────────────────────────────────────
+
+model OptimizationRun {
+  id               String   @id @default(cuid())
+  userId           String
+  status           String   @default("running")  // running | completed | failed
+  agentsAnalyzed   Int      @default(0)
+  recommendationCount Int   @default(0)
+  appliedCount     Int      @default(0)
+  summary          String?  @db.Text
+  trigger          String   @default("manual")   // manual | scheduled | threshold
+  createdAt        DateTime @default(now())
+  completedAt      DateTime?
+
+  user            User                        @relation(fields: [userId], references: [id])
+  recommendations OptimizationRecommendation[]
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("optimization_runs")
+}
+
+model OptimizationRecommendation {
+  id        String   @id @default(cuid())
+  runId     String
+  agentId   String
+  type      String   // prompt_update | temperature | max_turns | tool_grant | system_prompt
+  reason    String   @db.Text
+  before    Json
+  after     Json
+  impact    String   @default("medium")  // low | medium | high
+  status    String   @default("pending") // pending | applied | rejected
+  appliedAt DateTime?
+  createdAt DateTime @default(now())
+
+  run   OptimizationRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+  agent AgentRegistration @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([agentId])
+  @@index([status])
+  @@map("optimization_recommendations")
+}
+
+model AgentPerformanceSnapshot {
+  id             String   @id @default(cuid())
+  agentId        String
+  periodStart    DateTime
+  periodEnd      DateTime
+  totalTasks     Int      @default(0)
+  successCount   Int      @default(0)
+  failureCount   Int      @default(0)
+  avgTurns       Float    @default(0)
+  avgCost        Float    @default(0)
+  avgTokens      Int      @default(0)
+  retryRate      Float    @default(0)
+  successRate    Float    @default(0)
+  createdAt      DateTime @default(now())
+
+  agent AgentRegistration @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([periodStart])
+  @@map("agent_performance_snapshots")
+}
+
+// ── Audit ──────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  userId       String?
+  action       String
+  resourceType String
+  resourceId   String
+  metadata     Json?
+  ipAddress    String?
+  timestamp    DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([resourceType, resourceId])
+  @@index([timestamp])
+  @@map("audit_logs")
+}

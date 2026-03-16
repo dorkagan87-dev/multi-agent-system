@@ -1,0 +1,46 @@
+# ── Stage 1: Install dependencies ─────────────────────────────────────────────
+FROM node:20-alpine AS deps
+RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
+WORKDIR /app
+
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json turbo.json ./
+COPY packages/shared-types/package.json ./packages/shared-types/
+COPY apps/api/package.json ./apps/api/
+
+RUN pnpm install --frozen-lockfile
+
+# ── Stage 2: Build ─────────────────────────────────────────────────────────────
+FROM deps AS builder
+WORKDIR /app
+
+COPY packages/shared-types ./packages/shared-types
+COPY apps/api ./apps/api
+
+# Generate Prisma client
+RUN pnpm --filter api exec prisma generate
+
+# Compile TypeScript
+RUN pnpm --filter api build
+
+# ── Stage 3: Runtime ───────────────────────────────────────────────────────────
+FROM node:20-alpine AS runner
+RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
+WORKDIR /app
+
+# Copy workspace manifests and install prod deps only
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY packages/shared-types/package.json ./packages/shared-types/
+COPY apps/api/package.json ./apps/api/
+RUN pnpm install --frozen-lockfile --prod
+
+# Copy build output and Prisma schema
+COPY --from=builder /app/apps/api/dist ./apps/api/dist
+COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
+# Copy generated Prisma client (includes native .node binaries)
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+
+EXPOSE 3001
+
+# Run DB migrations then start server
+CMD ["sh", "-c", "cd apps/api && npx prisma migrate deploy && node dist/server.js"]

@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls /c/Users/User/agent-hub/apps/web/src/app/\\\\\\(dashboard\\\\\\)/)",
+      "Bash(ls /c/Users/User/agent-hub/apps/web/src/app/\\\\\\(dashboard\\\\\\)/office/)",
+      "Bash(ls /c/Users/User/agent-hub/apps/web/src/app/\\\\\\(dashboard\\\\\\)/settings/)",
+      "Bash(ls /c/Users/User/agent-hub/apps/web/src/app/\\\\\\(dashboard\\\\\\)/marketplace/)",
+      "Bash(ls /c/Users/User/agent-hub/apps/web/src/app/\\\\\\(dashboard\\\\\\)/agents/)",
+      "Bash(ls /c/Users/User/agent-hub/apps/web/src/app/\\\\\\(dashboard\\\\\\)/projects/)",
+      "Bash(ls /c/Users/User/agent-hub/apps/web/src/app/\\\\\\(dashboard\\\\\\)/agents/[id]/)",
+      "Bash(ls /c/Users/User/agent-hub/apps/web/src/app/\\\\\\(dashboard\\\\\\)/projects/[id]/)",
+      "Bash(ls /c/Users/User/agent-hub/apps/web/src/app/\\\\\\(dashboard\\\\\\)/projects/ideas/)",
+      "Bash(ls /c/Users/User/agent-hub/apps/web/src/app/\\\\\\(dashboard\\\\\\)/agents/new/)",
+      "Bash(ls /c/Users/User/agent-hub/apps/web/src/app/\\\\\\(dashboard\\\\\\)/projects/new/)",
+      "Bash(wc -l /c/Users/User/agent-hub/apps/web/src/app/\\\\\\(dashboard\\\\\\)/agents/[id]/page.tsx /c/Users/User/agent-hub/apps/web/src/app/\\\\\\(dashboard\\\\\\)/projects/[id]/page.tsx /c/Users/User/agent-hub/apps/web/src/app/\\\\\\(dashboard\\\\\\)/projects/ideas/page.tsx /c/Users/User/agent-hub/apps/web/src/app/\\\\\\(dashboard\\\\\\)/agents/new/page.tsx /c/Users/User/agent-hub/apps/web/src/app/\\\\\\(dashboard\\\\\\)/projects/new/page.tsx /c/Users/User/agent-hub/apps/web/src/app/\\\\\\(dashboard\\\\\\)/page.tsx)",
+      "Bash(ls /c/Users/User/agent-hub/apps/web/src/app/\\\\\\(dashboard\\\\\\)/tools/)",
+      "Bash(cat /c/Users/User/agent-hub/apps/web/src/app/\\\\\\(dashboard\\\\\\)/tools/page.tsx)",
+      "Bash(/c/Users/User/agent-hub/apps/web/.env.local:*)"
+    ]
+  }
+}
