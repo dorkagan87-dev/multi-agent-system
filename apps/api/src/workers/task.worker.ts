@@ -158,6 +158,35 @@ async function enqueueOverdueTasks() {
 enqueueOverdueTasks().catch(() => {});
 setInterval(() => enqueueOverdueTasks().catch(() => {}), 60_000); // check every minute
 
+// ── Auto-recovery: unblock stuck tasks every 10 minutes ──────────────────────
+// Retries FAILED tasks and unblocks BLOCKED tasks in ACTIVE projects
+// so agents never stay permanently idle due to dependency failures.
+async function autoRecoverStuckTasks() {
+  const stuck = await prisma.task.findMany({
+    where: {
+      status: { in: ['FAILED', 'BLOCKED'] },
+      project: { status: 'ACTIVE' },
+      queueJobId: null,
+    },
+    select: { id: true, title: true, status: true },
+  });
+
+  if (stuck.length === 0) return;
+  logger.info({ count: stuck.length }, '🔁 Auto-recovering stuck tasks');
+
+  for (const task of stuck) {
+    await prisma.task.update({
+      where: { id: task.id },
+      data: { status: 'QUEUED', retryCount: 0, startedAt: null },
+    });
+    const job = await taskQueue.add('task-execution', { taskId: task.id });
+    await prisma.task.update({ where: { id: task.id }, data: { queueJobId: job.id?.toString() ?? null } });
+    logger.info({ taskId: task.id, title: task.title, wasStatus: task.status }, '🔁 Re-queued stuck task');
+  }
+}
+autoRecoverStuckTasks().catch(() => {});
+setInterval(() => autoRecoverStuckTasks().catch(() => {}), 10 * 60_000); // every 10 minutes
+
 // Run market intelligence cycle on startup then every 6 hours
 runMarketIntelligenceCycle().catch((err) => logger.warn({ err }, 'Initial market intel cycle failed'));
 setInterval(() => {
