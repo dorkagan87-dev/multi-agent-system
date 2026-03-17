@@ -17,8 +17,13 @@ export default function LoginPage() {
     setError('');
     const result = await signIn('credentials', { email, password, redirect: false });
     setLoading(false);
-    if (!result) { setError('signIn returned null — check console'); return; }
-    if (result.error) { setError(`Error: ${result.error} (ok=${result.ok})`); return; }
+    if (!result) { setError('No response from auth server'); return; }
+    if (result.error || !result.ok) {
+      setError(`Login failed: ${result.error ?? 'unknown error'} (ok=${result.ok})`);
+      return;
+    }
+    // Wait for session cookie to propagate before navigating
+    await new Promise((r) => setTimeout(r, 500));
     window.location.href = '/dashboard';
   };
 
