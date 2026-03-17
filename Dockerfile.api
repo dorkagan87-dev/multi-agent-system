@@ -20,4 +20,4 @@ RUN pnpm --filter api build
 EXPOSE 3001
 
 # Run schema sync before starting (safe no-op if schema is already up to date)
-CMD ["sh", "-c", "node_modules/.bin/prisma db push --skip-generate && node apps/api/dist/server.js"]
+CMD ["sh", "-c", "pnpm --filter api exec prisma db push --skip-generate && node apps/api/dist/server.js"]
