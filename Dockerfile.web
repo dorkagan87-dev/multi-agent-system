@@ -24,6 +24,10 @@ ENV NEXT_OUTPUT=standalone
 
 RUN pnpm --filter web build
 
+# Copy static assets into standalone output (required by Next.js standalone mode)
+RUN cp -r apps/web/.next/static apps/web/.next/standalone/apps/web/.next/static && \
+    cp -r apps/web/public apps/web/.next/standalone/apps/web/public
+
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
