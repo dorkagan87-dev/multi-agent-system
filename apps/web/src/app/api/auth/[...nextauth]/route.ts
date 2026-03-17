@@ -2,7 +2,8 @@ import NextAuth from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+// API_URL is a runtime env var for server-side calls (not baked in at build time like NEXT_PUBLIC_*)
+const API_URL = process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
 const handler = NextAuth({
   providers: [
