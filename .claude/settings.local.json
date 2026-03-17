@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(railway add:*)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(railway status:*)",
+      "Bash(railway up:*)",
+      "Bash(node -e \":*)",
+      "Bash(railway variable:*)",
+      "Bash(railway logs:*)",
+      "Bash(railway deployment:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(curl -s https://web-production-1cdd2.up.railway.app/ -o /dev/null -w \"%{http_code}\")",
+      "Bash(curl -s https://api-production-847d.up.railway.app/health)",
+      "Bash(curl -s -X POST https://api-production-847d.up.railway.app/auth/register -H \"Content-Type: application/json\" -d '{\"\"email\"\":\"\"smoketest@example.com\"\",\"\"password\"\":\"\"Test1234!\"\",\"\"name\"\":\"\"Smoke Test\"\"}')",
+      "Bash(curl -s -X POST https://api-production-847d.up.railway.app/auth/register -H 'Content-Type: application/json' --data-raw '{\"\"email\"\":\"\"smoketest@example.com\"\",\"\"password\"\":\"\"Test1234!\"\",\"\"name\"\":\"\"Smoke Test\"\"}')",
+      "Bash(curl -s -X POST https://api-production-847d.up.railway.app/auth/register -H 'Content-Type: application/json' -d @-)",
+      "Bash(curl -s -X POST https://api-production-847d.up.railway.app/api/auth/register -H 'Content-Type: application/json' -d @-)",
+      "Bash(curl -s -X POST https://api-production-847d.up.railway.app/api/v1/auth/register -H 'Content-Type: application/json' -d @-)",
+      "Bash(curl -s -X POST https://api-production-847d.up.railway.app/api/v1/auth/login -H 'Content-Type: application/json' -d @- -c /tmp/cookies.txt)"
+    ]
+  }
+}

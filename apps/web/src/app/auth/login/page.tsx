@@ -19,10 +19,10 @@ export default function LoginPage() {
     setLoading(false);
     if (!result) { setError('No response from auth server'); return; }
     if (result.error || !result.ok) {
-      setError(`Login failed: ${result.error ?? 'unknown error'} (ok=${result.ok})`);
+      setError(`Login failed: ${result.error ?? 'unknown error'} (ok=${result.ok}, status=${result.status})`);
       return;
     }
-    // Wait for session cookie to propagate before navigating
+    setError('Login OK — redirecting...');
     await new Promise((r) => setTimeout(r, 500));
     window.location.href = '/dashboard';
   };
@@ -40,7 +40,7 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="bg-card border border-border rounded-xl p-6 space-y-4">
           <h2 className="font-semibold text-center">Sign In</h2>
-          {error && <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded">{error}</p>}
+          {error && <p className="text-xs font-bold px-3 py-2 rounded" style={{color:'red',background:'#fee'}}>{error}</p>}
           <div>
             <label className="block text-xs text-muted-foreground mb-1">Email</label>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus
