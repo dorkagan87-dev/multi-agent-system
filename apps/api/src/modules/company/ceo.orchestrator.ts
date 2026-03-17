@@ -12,6 +12,7 @@
  * This runs as a regular task execution against a special CEO prompt.
  */
 import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { prisma } from '../../config/database';
 import { taskQueue } from '../tasks/tasks.queue';
 import { publishEvent } from '../events/events.service';
@@ -108,49 +109,7 @@ export async function runCEOOrchestration(projectId: string): Promise<void> {
   try {
     const userPrompt = `PROJECT: ${project.name}\nGOAL: ${project.goal}\n${project.description ? `CONTEXT: ${project.description}` : ''}\n\nCreate a complete execution plan. Use the submit_plan tool to return the plan. Keep task descriptions concise (2-3 sentences max). Maximum 8 tasks.`;
 
-    // Use Anthropic tool_use directly — guarantees valid structured JSON, no truncation issues
-    const client = new Anthropic({ apiKey });
-    const response = await client.messages.create({
-      model: ceoAgent.modelId,
-      system: effectiveCEOPrompt,
-      max_tokens: 8000,
-      temperature: 0.3,
-      tools: [{
-        name: 'submit_plan',
-        description: 'Submit the completed project execution plan',
-        input_schema: {
-          type: 'object' as const,
-          properties: {
-            announcement: { type: 'string', description: 'Company-wide announcement about this project' },
-            tasks: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  title: { type: 'string' },
-                  description: { type: 'string' },
-                  acceptanceCriteria: { type: 'string' },
-                  department: { type: 'string', enum: ['Engineering', 'Marketing', 'Research', 'Analytics', 'Finance', 'Legal', 'Design', 'Operations'] },
-                  priority: { type: 'string', enum: ['critical', 'high', 'medium', 'low'] },
-                  dependsOnTitles: { type: 'array', items: { type: 'string' } },
-                  estimatedTurns: { type: 'number' },
-                },
-                required: ['title', 'description', 'acceptanceCriteria', 'department', 'priority', 'dependsOnTitles', 'estimatedTurns'],
-              },
-            },
-          },
-          required: ['announcement', 'tasks'],
-        },
-      }],
-      tool_choice: { type: 'tool', name: 'submit_plan' },
-      messages: [{ role: 'user', content: userPrompt }],
-    });
-
-    const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === 'submit_plan');
-    if (!toolUse || toolUse.type !== 'tool_use') {
-      throw new Error('CEO did not call submit_plan tool');
-    }
-    const plan = toolUse.input as CompanyPlan;
+    const plan = await callCEOPlanner(ceoAgent.provider, ceoAgent.modelId, apiKey, effectiveCEOPrompt, userPrompt);
 
     // Create tasks with dependency resolution
     const titleToId: Record<string, string> = {};
@@ -269,4 +228,90 @@ async function broadcastCompanyMessage(agentId: string, agentName: string, proje
     message,
     timestamp: new Date().toISOString(),
   });
+}
+
+// ── Provider-agnostic CEO planner ─────────────────────────────────────────────
+
+const PLAN_TOOL_SCHEMA = {
+  announcement: { type: 'string', description: 'Company-wide announcement about this project' },
+  tasks: {
+    type: 'array',
+    items: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        description: { type: 'string' },
+        acceptanceCriteria: { type: 'string' },
+        department: { type: 'string', enum: ['Engineering', 'Marketing', 'Research', 'Analytics', 'Finance', 'Legal', 'Design', 'Operations'] },
+        priority: { type: 'string', enum: ['critical', 'high', 'medium', 'low'] },
+        dependsOnTitles: { type: 'array', items: { type: 'string' } },
+        estimatedTurns: { type: 'number' },
+      },
+      required: ['title', 'description', 'acceptanceCriteria', 'department', 'priority', 'dependsOnTitles', 'estimatedTurns'],
+    },
+  },
+} as const;
+
+async function callCEOPlanner(
+  provider: string,
+  modelId: string,
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string,
+): Promise<CompanyPlan> {
+  const isOpenAI = provider === 'OPENAI';
+
+  if (isOpenAI) {
+    const client = new OpenAI({ apiKey });
+    const response = await client.chat.completions.create({
+      model: modelId,
+      temperature: 0.3,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      tools: [{
+        type: 'function',
+        function: {
+          name: 'submit_plan',
+          description: 'Submit the completed project execution plan',
+          parameters: {
+            type: 'object',
+            properties: PLAN_TOOL_SCHEMA,
+            required: ['announcement', 'tasks'],
+          },
+        },
+      }],
+      tool_choice: { type: 'function', function: { name: 'submit_plan' } },
+    });
+
+    const toolCall = response.choices[0]?.message?.tool_calls?.[0];
+    if (!toolCall) throw new Error('CEO did not call submit_plan tool');
+    return JSON.parse(toolCall.function.arguments) as CompanyPlan;
+
+  } else {
+    // Anthropic (default)
+    const client = new Anthropic({ apiKey });
+    const response = await client.messages.create({
+      model: modelId,
+      system: systemPrompt,
+      max_tokens: 8000,
+      temperature: 0.3,
+      tools: [{
+        name: 'submit_plan',
+        description: 'Submit the completed project execution plan',
+        input_schema: {
+          type: 'object' as const,
+          properties: PLAN_TOOL_SCHEMA,
+          required: ['announcement', 'tasks'],
+        },
+      }],
+      tool_choice: { type: 'tool', name: 'submit_plan' },
+      messages: [{ role: 'user', content: userPrompt }],
+    });
+
+    const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === 'submit_plan');
+    if (!toolUse || toolUse.type !== 'tool_use') throw new Error('CEO did not call submit_plan tool');
+    return toolUse.input as CompanyPlan;
+  }
 }

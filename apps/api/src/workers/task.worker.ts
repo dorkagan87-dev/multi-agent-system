@@ -179,7 +179,8 @@ async function autoRecoverStuckTasks() {
       where: { id: task.id },
       data: { status: 'QUEUED', retryCount: 0, startedAt: null },
     });
-    const job = await taskQueue.add('task-execution', { taskId: task.id });
+    const { taskQueue: tq } = await import('../modules/tasks/tasks.queue');
+    const job = await tq.add('task-execution', { taskId: task.id });
     await prisma.task.update({ where: { id: task.id }, data: { queueJobId: job.id?.toString() ?? null } });
     logger.info({ taskId: task.id, title: task.title, wasStatus: task.status }, '🔁 Re-queued stuck task');
   }
