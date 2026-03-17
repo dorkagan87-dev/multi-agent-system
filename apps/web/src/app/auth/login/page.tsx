@@ -17,8 +17,9 @@ export default function LoginPage() {
     setError('');
     const result = await signIn('credentials', { email, password, redirect: false });
     setLoading(false);
-    if (result?.error) setError('Invalid email or password');
-    else window.location.href = '/dashboard';
+    if (!result) { setError('signIn returned null — check console'); return; }
+    if (result.error) { setError(`Error: ${result.error} (ok=${result.ok})`); return; }
+    window.location.href = '/dashboard';
   };
 
   return (
