@@ -155,7 +155,7 @@ export async function runCEOOrchestration(projectId: string): Promise<void> {
       .filter(Boolean);
 
     for (const taskId of leafTaskIds) {
-      await taskQueue.add('execute-task', { taskId }, { jobId: taskId });
+      await taskQueue.add('task-execution', { taskId }, { jobId: taskId });
       await prisma.task.update({ where: { id: taskId }, data: { status: 'QUEUED' } });
     }
 

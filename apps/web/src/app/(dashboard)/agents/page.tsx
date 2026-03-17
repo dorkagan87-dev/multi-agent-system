@@ -2,7 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../../lib/api-client';
 import Link from 'next/link';
-import { Plus, Bot, Circle, Trash2, Power } from 'lucide-react';
+import { Plus, Bot, Circle, Trash2, Power, LayoutTemplate } from 'lucide-react';
 import { cn, STATUS_COLORS, PROVIDER_ICONS } from '../../../lib/utils';
 import toast from 'react-hot-toast';
 
@@ -28,9 +28,14 @@ export default function AgentsPage() {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <p className="text-sm text-muted-foreground">{agents.length} agents registered</p>
-        <Link href="/agents/new" className="flex items-center gap-2 bg-primary text-primary-foreground px-3 py-2 rounded-md text-sm font-medium hover:bg-primary/90">
-          <Plus className="w-4 h-4" /> Register Agent
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/agents/templates" className="flex items-center gap-2 border border-border px-3 py-2 rounded-md text-sm font-medium hover:bg-secondary">
+            <LayoutTemplate className="w-4 h-4" /> Templates
+          </Link>
+          <Link href="/agents/new" className="flex items-center gap-2 bg-primary text-primary-foreground px-3 py-2 rounded-md text-sm font-medium hover:bg-primary/90">
+            <Plus className="w-4 h-4" /> Register Agent
+          </Link>
+        </div>
       </div>
 
       {isLoading ? (

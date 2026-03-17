@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { BUILT_IN_PROJECT_TEMPLATES } from './data/project-templates';
 const prisma = new PrismaClient();
 
 const BUILT_IN_TOOLS: Array<{
@@ -171,6 +172,33 @@ async function main() {
       create: tool,
     });
     console.log(`  ✓ Tool: ${tool.displayName}`);
+  }
+
+  // ── Project Templates ─────────────────────────────────────────────────────
+  for (const tpl of BUILT_IN_PROJECT_TEMPLATES) {
+    const { tasks, ...tplData } = tpl;
+    const existing = await prisma.projectTemplate.findFirst({
+      where: { isBuiltIn: true, name: tplData.name },
+      select: { id: true },
+    });
+
+    const templateId = existing
+      ? existing.id
+      : (await prisma.projectTemplate.create({
+          data: { ...tplData, isBuiltIn: true },
+        })).id;
+
+    if (!existing) {
+      // Create tasks for new template
+      for (const task of tasks) {
+        await prisma.projectTemplateTask.create({
+          data: { templateId, ...task },
+        });
+      }
+      console.log(`  ✓ Project Template: ${tplData.name} (${tasks.length} tasks)`);
+    } else {
+      console.log(`  ~ Project Template: ${tplData.name} (already exists)`);
+    }
   }
 
   console.log('✅ Seed complete');

@@ -18,7 +18,7 @@ export default function LoginPage() {
     const result = await signIn('credentials', { email, password, redirect: false });
     setLoading(false);
     if (result?.error) setError('Invalid email or password');
-    else router.push('/');
+    else router.push('/dashboard');
   };
 
   return (
@@ -49,9 +49,15 @@ export default function LoginPage() {
             className="w-full bg-primary text-primary-foreground py-2 rounded text-sm font-medium hover:bg-primary/90 disabled:opacity-50">
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
-          <p className="text-xs text-center text-muted-foreground">
-            No account? <a href="/auth/register" className="text-primary hover:underline">Register</a>
-          </p>
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <a href="/auth/forgot-password" className="hover:text-foreground hover:underline">
+              Forgot password?
+            </a>
+            <span>
+              No account?{' '}
+              <a href="/auth/register" className="text-primary hover:underline">Register</a>
+            </span>
+          </div>
         </form>
       </div>
     </div>

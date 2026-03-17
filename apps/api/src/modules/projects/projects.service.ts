@@ -98,7 +98,7 @@ export async function startProject(id: string, userId: string) {
   );
 
   for (const task of leafTasks) {
-    await taskQueue.add('execute-task', { taskId: task.id }, {
+    await taskQueue.add('task-execution', { taskId: task.id }, {
       jobId: task.id,
       removeOnComplete: false,
       removeOnFail: false,

@@ -91,7 +91,7 @@ export async function overrideTask(
   });
 
   // Re-enqueue
-  await taskQueue.add('execute-task', { taskId }, { jobId: `override-${taskId}-${Date.now()}` });
+  await taskQueue.add('task-execution', { taskId }, { jobId: `override-${taskId}-${Date.now()}` });
 
   await publishEvent('task:status_changed', { taskId, projectId: task.projectId, status: 'queued', agentId: updates.assignedAgentId ?? task.assignedAgentId });
 
@@ -151,7 +151,7 @@ export async function resumeDepartment(userId: string, projectId: string, depart
 
   for (const task of pendingTasks) {
     await prisma.task.update({ where: { id: task.id }, data: { status: 'QUEUED' } });
-    await taskQueue.add('execute-task', { taskId: task.id }, { jobId: `resume-${task.id}` });
+    await taskQueue.add('task-execution', { taskId: task.id }, { jobId: `resume-${task.id}` });
   }
 
   await publishEvent('agent:message', {
@@ -220,7 +220,7 @@ export async function redirectTask(userId: string, taskId: string, newAgentId: s
     data: { assignedAgentId: newAgentId, status: 'QUEUED', retryCount: 0 },
   });
 
-  await taskQueue.add('execute-task', { taskId }, { jobId: `redirect-${taskId}-${Date.now()}` });
+  await taskQueue.add('task-execution', { taskId }, { jobId: `redirect-${taskId}-${Date.now()}` });
   await publishEvent('task:status_changed', { taskId, projectId: task.projectId, status: 'queued', agentId: newAgentId });
   await audit(userId, 'intervention.redirect_task', 'Task', taskId, { fromAgent: task.assignedAgentId, toAgent: newAgentId });
 }

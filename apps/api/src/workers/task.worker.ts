@@ -1,7 +1,9 @@
 /**
  * Task Worker — run as a separate process: `pnpm worker`
  * Consumes the BullMQ "task-execution" queue and calls agent-runner.
+ * Also processes the "contract-analysis" queue.
  */
+import { Sentry } from '../instrument'; // must be first
 import '../config'; // trigger env validation early
 import { Worker } from 'bullmq';
 import { redis } from '../config/redis';
@@ -10,9 +12,12 @@ import { runAgentOnTask } from './agent-runner';
 import { unblockDependents } from '../modules/tasks/tasks.service';
 import { runMarketIntelligenceCycle } from '../modules/network/market-intelligence.service';
 import { runOptimizationEngine } from '../modules/optimization/engine.service';
+import { analyzeContract } from '../modules/contracts/contract-analysis.service';
+import { publishEvent } from '../modules/events/events.service';
 import { prisma } from '../config/database';
 import { logger } from '../utils/logger';
 import type { TaskJobData } from '../modules/tasks/tasks.queue';
+import type { ContractJobData } from '../modules/contracts/contracts.queue';
 
 const worker = new Worker<TaskJobData>(
   'task-execution',
@@ -45,11 +50,85 @@ const worker = new Worker<TaskJobData>(
 
 worker.on('failed', (job, err) => {
   logger.error({ jobId: job?.id, taskId: job?.data.taskId, err: err.message }, 'Task job failed');
+  Sentry.captureException(err, { extra: { jobId: job?.id, taskId: job?.data.taskId } });
 });
 
 worker.on('error', (err) => {
   logger.error({ err }, 'Worker error');
 });
+
+// ── Contract Analysis Worker ───────────────────────────────────────────────────
+
+const contractWorker = new Worker<ContractJobData>(
+  'contract-analysis',
+  async (job) => {
+    const { contractId } = job.data;
+    logger.info({ contractId, jobId: job.id }, '[ContractWorker] Starting analysis');
+
+    await prisma.contract.update({
+      where: { id: contractId },
+      data: { status: 'ANALYZING' },
+    });
+
+    try {
+      const contract = await prisma.contract.findUnique({ where: { id: contractId } });
+      if (!contract) throw new Error(`Contract ${contractId} not found`);
+
+      const result = await analyzeContract(contract.rawText);
+
+      // upsert so BullMQ retries don't crash on unique-constraint violation
+      await prisma.contractAnalysis.upsert({
+        where: { contractId },
+        create: {
+          contractId,
+          riskScore: result.riskScore,
+          summary: result.summary,
+          // Prisma JSON fields require `any` cast — typed arrays are not assignable to InputJsonValue
+          clauses: result.clauses as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+          redFlags: result.redFlags as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+          missingClauses: result.missingClauses as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+        },
+        update: {
+          riskScore: result.riskScore,
+          summary: result.summary,
+          clauses: result.clauses as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+          redFlags: result.redFlags as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+          missingClauses: result.missingClauses as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+        },
+      });
+
+      await prisma.contract.update({
+        where: { id: contractId },
+        data: { status: 'DONE' },
+      });
+
+      await publishEvent('agent-hub:contracts:done', { contractId });
+      logger.info({ contractId }, '[ContractWorker] Analysis complete');
+    } catch (err: any) {
+      logger.error({ contractId, err: err.message }, '[ContractWorker] Analysis failed');
+      await prisma.contract.update({
+        where: { id: contractId },
+        data: { status: 'FAILED' },
+      });
+      throw err; // let BullMQ handle retries/failure recording
+    }
+  },
+  {
+    connection: redis as any,
+    concurrency: 3,
+  },
+);
+
+contractWorker.on('failed', (job, err) => {
+  logger.error({ jobId: job?.id, contractId: job?.data.contractId, err: err.message }, '[ContractWorker] Job failed');
+  Sentry.captureException(err, { extra: { jobId: job?.id, contractId: job?.data.contractId } });
+});
+
+contractWorker.on('error', (err) => {
+  logger.error({ err }, '[ContractWorker] Worker error');
+});
+
+logger.info('📄 Contract analysis worker started');
 
 logger.info({ concurrency: config.WORKER_CONCURRENCY }, '🤖 Task worker started');
 
@@ -177,7 +256,7 @@ async function autoRecoverStuckTasks() {
   for (const task of stuck) {
     await prisma.task.update({
       where: { id: task.id },
-      data: { status: 'QUEUED', retryCount: 0, startedAt: null },
+      data: { status: 'QUEUED', startedAt: null },
     });
     const { taskQueue: tq } = await import('../modules/tasks/tasks.queue');
     const job = await tq.add('task-execution', { taskId: task.id });
@@ -215,7 +294,7 @@ setInterval(async () => {
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
-  await worker.close();
-  logger.info('Worker shut down gracefully');
+  await Promise.all([worker.close(), contractWorker.close()]);
+  logger.info('Workers shut down gracefully');
   process.exit(0);
 });

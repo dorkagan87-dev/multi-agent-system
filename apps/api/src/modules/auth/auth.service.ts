@@ -1,9 +1,10 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { createHash, randomBytes } from 'crypto';
 import { prisma } from '../../config/database';
 import { config } from '../../config';
 import { hashApiKey } from '../../utils/crypto';
-import { randomBytes } from 'crypto';
+import { sendPasswordResetEmail } from '../../utils/mailer';
 
 export interface TokenPair {
   accessToken: string;
@@ -71,6 +72,79 @@ export async function generateApiKey(userId: string, name: string) {
   });
 
   return { id: record.id, key: raw, prefix: keyPrefix };
+}
+
+export async function updateProfile(
+  userId: string,
+  data: { name?: string; email?: string },
+) {
+  if (data.email) {
+    const existing = await prisma.user.findUnique({ where: { email: data.email } });
+    if (existing && existing.id !== userId) {
+      throw Object.assign(new Error('Email already in use by another account'), { status: 409 });
+    }
+  }
+  return prisma.user.update({
+    where: { id: userId },
+    data: {
+      ...(data.name !== undefined && { name: data.name }),
+      ...(data.email && { email: data.email }),
+    },
+    select: { id: true, email: true, name: true, role: true, createdAt: true },
+  });
+}
+
+export async function changePassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user?.passwordHash) throw Object.assign(new Error('Account not found'), { status: 404 });
+
+  const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+  if (!valid) throw Object.assign(new Error('Current password is incorrect'), { status: 400 });
+
+  const passwordHash = await bcrypt.hash(newPassword, 12);
+  await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+}
+
+const RESET_EXPIRES_MS = 60 * 60 * 1000; // 1 hour
+
+export async function requestPasswordReset(email: string): Promise<void> {
+  const user = await prisma.user.findUnique({ where: { email } });
+  // Always return silently — never leak whether the email exists
+  if (!user) return;
+
+  // Invalidate any existing unused tokens for this user
+  await prisma.passwordResetToken.deleteMany({ where: { userId: user.id } });
+
+  const rawToken = randomBytes(32).toString('hex');
+  const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+  const expiresAt = new Date(Date.now() + RESET_EXPIRES_MS);
+
+  await prisma.passwordResetToken.create({
+    data: { userId: user.id, tokenHash, expiresAt },
+  });
+
+  const resetUrl = `${config.APP_URL}/auth/reset-password?token=${rawToken}`;
+  await sendPasswordResetEmail(email, resetUrl);
+}
+
+export async function resetPassword(rawToken: string, newPassword: string): Promise<void> {
+  const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+
+  const record = await prisma.passwordResetToken.findUnique({ where: { tokenHash } });
+  if (!record) throw Object.assign(new Error('Invalid or expired reset link'), { status: 400 });
+  if (record.usedAt) throw Object.assign(new Error('This reset link has already been used'), { status: 400 });
+  if (record.expiresAt < new Date()) throw Object.assign(new Error('Reset link has expired — request a new one'), { status: 400 });
+
+  const passwordHash = await bcrypt.hash(newPassword, 12);
+
+  await prisma.$transaction([
+    prisma.user.update({ where: { id: record.userId }, data: { passwordHash } }),
+    prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),
+  ]);
 }
 
 export async function validateApiKey(rawKey: string) {

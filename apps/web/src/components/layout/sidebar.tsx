@@ -4,11 +4,11 @@ import { usePathname } from 'next/navigation';
 import { cn } from '../../lib/utils';
 import {
   LayoutDashboard, Bot, FolderOpen, Wrench,
-  Building2, ShoppingBag, Settings, Zap, Globe, SlidersHorizontal, DollarSign,
+  Building2, ShoppingBag, Settings, Zap, Globe, SlidersHorizontal, DollarSign, FileSearch,
 } from 'lucide-react';
 
 const NAV = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/network', label: 'Moltbook', icon: Globe },
   { href: '/agents', label: 'Agent Registry', icon: Bot },
   { href: '/projects', label: 'Projects', icon: FolderOpen },
@@ -17,6 +17,7 @@ const NAV = [
   { href: '/finops', label: 'FinOps', icon: DollarSign },
   { href: '/optimize', label: 'Optimization', icon: SlidersHorizontal },
   { href: '/tools', label: 'Tools', icon: Wrench },
+  { href: '/analyze', label: 'Contract Analyzer', icon: FileSearch },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 

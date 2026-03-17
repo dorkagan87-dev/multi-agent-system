@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../../../../lib/api-client';
 import { useRouter } from 'next/navigation';
@@ -27,6 +27,31 @@ export default function NewAgentPage() {
   const [importProvider, setImportProvider] = useState('openai');
   const [importedAgents, setImportedAgents] = useState<any[]>([]);
   const [availableModels, setAvailableModels] = useState<any[]>([]);
+  const [templateName, setTemplateName] = useState<string | null>(null);
+
+  // Load template preset from sessionStorage (set by /agents/templates gallery)
+  useEffect(() => {
+    const raw = sessionStorage.getItem('agent_template_preset');
+    if (!raw) return;
+    try {
+      const preset = JSON.parse(raw);
+      sessionStorage.removeItem('agent_template_preset');
+      setTemplateName(preset.name ?? null);
+      setForm((f) => ({
+        ...f,
+        name: preset.name ?? f.name,
+        description: preset.description ?? f.description,
+        provider: preset.provider ?? f.provider,
+        modelId: preset.modelId ?? f.modelId,
+        systemPrompt: preset.systemPrompt ?? f.systemPrompt,
+        temperature: preset.temperature ?? f.temperature,
+        maxTokensPerTurn: preset.maxTokensPerTurn ?? f.maxTokensPerTurn,
+        maxTurns: preset.maxTurns ?? f.maxTurns,
+        jobTitle: preset.jobTitle ?? f.jobTitle,
+        department: preset.department ?? f.department,
+      }));
+    } catch { /* ignore */ }
+  }, []);
 
   const createMutation = useMutation({
     mutationFn: (data: any) => apiClient.post('/agents', data),
@@ -80,6 +105,20 @@ export default function NewAgentPage() {
 
   return (
     <div className="max-w-2xl space-y-6">
+      {/* Template banner */}
+      {templateName && (
+        <div className="bg-primary/10 border border-primary/30 rounded-lg px-4 py-2.5 text-sm flex items-center justify-between">
+          <span>Using template: <span className="font-medium">{templateName}</span></span>
+          <button
+            type="button"
+            onClick={() => setTemplateName(null)}
+            className="text-xs text-muted-foreground hover:text-foreground"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       {/* Import from provider section */}
       <div className="bg-card border border-border rounded-lg p-4">
         <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">

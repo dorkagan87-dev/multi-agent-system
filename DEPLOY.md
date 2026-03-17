@@ -2,139 +2,157 @@
 
 ## What you need
 - [Railway account](https://railway.app) (free to start, ~$10-20/mo for always-on)
-- Your code pushed to a GitHub repo
-- 10 minutes
+- Your code pushed to GitHub
+- Railway CLI: `npm i -g @railway/cli` then `railway login`
 
 ---
 
 ## Step 1 — Push to GitHub
 
 ```bash
-cd c:/Users/User/agent-hub
-git init
 git add .
-git commit -m "initial commit"
-# Create a repo on github.com, then:
-git remote add origin https://github.com/YOUR_USERNAME/agent-hub.git
-git push -u origin main
+git commit -m "ready for staging"
+git push
 ```
 
 ---
 
 ## Step 2 — Create Railway Project
 
-1. Go to [railway.app](https://railway.app) → **New Project**
-2. Click **"Deploy from GitHub repo"** → connect your repo
+```bash
+railway init          # creates a new project and links it
+railway link          # or link to an existing project
+```
+
+Or via dashboard: railway.app → **New Project** → **Deploy from GitHub repo**
 
 ---
 
 ## Step 3 — Add PostgreSQL & Redis
 
-In your Railway project:
-1. Click **"+ New"** → **Database** → **PostgreSQL** → Deploy
-2. Click **"+ New"** → **Database** → **Redis** → Deploy
+In your Railway project dashboard:
+1. **+ New** → **Database** → **PostgreSQL** → Deploy
+2. **+ New** → **Database** → **Redis** → Deploy
 
-Railway auto-generates `DATABASE_URL` and `REDIS_URL` — you'll reference them as variables.
+Railway auto-generates `DATABASE_URL` and `REDIS_URL`.
 
 ---
 
 ## Step 4 — Create the 3 App Services
 
 ### Service 1: API
-1. Click **"+ New"** → **GitHub Repo** → your repo
-2. In service settings:
-   - **Root Directory**: `/` (root)
-   - **Dockerfile Path**: `Dockerfile.api`
-   - **Port**: `3001`
-3. Add environment variables (see below)
+- **Dockerfile**: `Dockerfile.api`
+- **Port**: `3001`
+- Socket.io shares this same port — no second port needed
 
 ### Service 2: Worker
-1. Click **"+ New"** → **GitHub Repo** → your repo (same repo, new service)
-2. Settings:
-   - **Root Directory**: `/`
-   - **Dockerfile Path**: `Dockerfile.worker`
-   - **No port** needed
-3. Add environment variables (same as API, minus PORT/CORS)
+- **Dockerfile**: `Dockerfile.worker`
+- **No port** (background process)
 
 ### Service 3: Web
-1. Click **"+ New"** → **GitHub Repo** → your repo
-2. Settings:
-   - **Root Directory**: `/`
-   - **Dockerfile Path**: `Dockerfile.web`
-   - **Port**: `3000`
-3. Add environment variables (see below)
+- **Dockerfile**: `Dockerfile.web`
+- **Port**: `3000`
 
 ---
 
 ## Step 5 — Environment Variables
 
-### API + Worker services (set on both)
+### API service
 
 | Variable | Value | Notes |
 |---|---|---|
-| `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` | Railway auto-fills from your PG service |
-| `REDIS_URL` | `${{Redis.REDIS_URL}}` | Railway auto-fills from Redis service |
-| `JWT_ACCESS_SECRET` | run `openssl rand -hex 32` | Generate once, use everywhere |
-| `JWT_REFRESH_SECRET` | run `openssl rand -hex 32` | Different value from access secret |
-| `ENCRYPTION_KEY` | run `openssl rand -hex 32` | Used to encrypt agent API keys |
+| `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` | Railway reference variable |
+| `REDIS_URL` | `${{Redis.REDIS_URL}}` | Railway reference variable |
+| `JWT_ACCESS_SECRET` | `openssl rand -hex 32` | |
+| `JWT_REFRESH_SECRET` | `openssl rand -hex 32` | Different from access secret |
+| `ENCRYPTION_KEY` | `openssl rand -hex 32` | Encrypts agent API keys |
 | `JWT_ACCESS_EXPIRES` | `15m` | |
 | `JWT_REFRESH_EXPIRES` | `7d` | |
-| `PORT` | `3001` | API only |
-| `HOST` | `0.0.0.0` | API only |
+| `PORT` | `3001` | |
+| `HOST` | `0.0.0.0` | |
 | `NODE_ENV` | `production` | |
-| `WORKER_CONCURRENCY` | `5` | Worker only |
-| `CORS_ORIGIN` | `https://your-web.railway.app` | Your web service URL |
+| `CORS_ORIGIN` | `https://your-web.up.railway.app` | Web service URL |
+| `APP_URL` | `https://your-web.up.railway.app` | For password reset emails |
+| `SENTRY_DSN` | *(optional)* | From sentry.io project settings |
+
+### Worker service (same as API except PORT/CORS/APP_URL)
+
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` |
+| `REDIS_URL` | `${{Redis.REDIS_URL}}` |
+| `JWT_ACCESS_SECRET` | *(same as API)* |
+| `JWT_REFRESH_SECRET` | *(same as API)* |
+| `ENCRYPTION_KEY` | *(same as API)* |
+| `JWT_ACCESS_EXPIRES` | `15m` |
+| `JWT_REFRESH_EXPIRES` | `7d` |
+| `NODE_ENV` | `production` |
+| `WORKER_CONCURRENCY` | `5` |
+| `SENTRY_DSN` | *(optional, same as API)* |
 
 ### Web service
 
 | Variable | Value | Notes |
 |---|---|---|
-| `NEXTAUTH_SECRET` | run `openssl rand -hex 32` | |
-| `NEXTAUTH_URL` | `https://your-web.railway.app` | Your Railway web URL |
-| `NEXT_PUBLIC_API_URL` | `https://your-api.railway.app` | Your Railway API URL |
-| `NEXT_PUBLIC_SOCKET_URL` | `https://your-api.railway.app` | Same as API (Socket.io on same port) |
+| `NEXTAUTH_SECRET` | `openssl rand -hex 32` | |
+| `NEXTAUTH_URL` | `https://your-web.up.railway.app` | |
+| `NEXT_PUBLIC_API_URL` | `https://your-api.up.railway.app` | API service URL |
+| `NEXT_PUBLIC_SOCKET_URL` | `https://your-api.up.railway.app` | Same as API — Socket.io on same port |
 | `NEXT_OUTPUT` | `standalone` | Required for Docker build |
+| `NEXT_PUBLIC_SENTRY_DSN` | *(optional)* | Client-side Sentry DSN (build-time arg) |
+| `SENTRY_DSN` | *(optional)* | Server-side Sentry DSN |
 
 ---
 
 ## Step 6 — Deploy
 
-Railway auto-deploys on every push to `main`. First deploy takes ~5 minutes to build.
+```bash
+railway up            # deploy current branch
+```
 
-After deploy:
-- API health: `https://your-api.railway.app/health`
-- Web app: `https://your-web.railway.app`
+Or push to GitHub — Railway auto-deploys on every push to `main`.
 
-Agents will run **24/7** — even when your PC is off.
+First deploy takes ~5–8 minutes to build all 3 images.
+
+---
+
+## Step 7 — Schema sync (first deploy only)
+
+The API container runs `prisma db push` automatically on startup.
+No manual migration step needed — the database is ready when the container starts.
+
+To seed default data (tools, templates) via Railway CLI:
+
+```bash
+railway run --service api -- node apps/api/dist/prisma/seed.js
+```
+
+---
+
+## Health checks
+
+- API: `https://your-api.up.railway.app/health` → `{"status":"ok"}`
+- Web: `https://your-web.up.railway.app`
 
 ---
 
 ## Generate secret keys
 
-Run these in your terminal and copy the output:
-
 ```bash
-# JWT Access Secret
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-
-# JWT Refresh Secret
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-
-# Encryption Key
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-
-# NextAuth Secret
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
+
+Run once per secret — JWT access, JWT refresh, encryption key, NextAuth secret are all different values.
 
 ---
 
-## After first deploy — run DB migrations
+## Smoke-test checklist
 
-In the Railway API service terminal (or via Railway CLI):
-```bash
-npx prisma migrate deploy
-npx prisma db seed
-```
-
-Or it runs automatically on API startup (migration is in the Docker CMD).
+- [ ] `GET /health` returns 200
+- [ ] Register a new user
+- [ ] Login → redirects to /dashboard
+- [ ] Create an agent
+- [ ] Create a project + task → task runs and completes
+- [ ] Socket.io: live activity feed updates in real-time
+- [ ] Contract analyzer: upload PDF → analysis appears
+- [ ] Password reset email (check server logs if SMTP not configured)

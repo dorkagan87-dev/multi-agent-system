@@ -81,7 +81,7 @@ export async function retryTask(id: string, projectId: string) {
   if (task.status !== 'FAILED') throw new Error('Only failed tasks can be retried');
 
   await prisma.task.update({ where: { id }, data: { status: 'QUEUED', retryCount: 0 } });
-  await taskQueue.add('execute-task', { taskId: id }, { jobId: `retry-${id}-${Date.now()}` });
+  await taskQueue.add('task-execution', { taskId: id }, { jobId: `retry-${id}-${Date.now()}` });
 }
 
 export async function cancelTask(id: string, projectId: string) {
@@ -132,7 +132,7 @@ export async function unblockDependents(completedTaskId: string): Promise<string
     const allDone = allBlocking.every((b) => b.blocking.status === 'COMPLETED');
     if (allDone) {
       await prisma.task.update({ where: { id: task.id }, data: { status: 'QUEUED' } });
-      await taskQueue.add('execute-task', { taskId: task.id }, { jobId: task.id });
+      await taskQueue.add('task-execution', { taskId: task.id }, { jobId: task.id });
       unblockedIds.push(task.id);
     }
   }

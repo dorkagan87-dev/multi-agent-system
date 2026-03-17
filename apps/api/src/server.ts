@@ -1,8 +1,10 @@
+import { Sentry } from './instrument'; // must be first — patches Node.js internals
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import cookie from '@fastify/cookie';
+import multipart from '@fastify/multipart';
 import { createServer } from 'http';
 import { config } from './config';
 import { redis, redisSub } from './config/redis';
@@ -21,12 +23,14 @@ import { networkRoutes } from './modules/network/network.routes';
 import { optimizationRoutes } from './modules/optimization/optimization.routes';
 import { templateRoutes } from './modules/templates/templates.routes';
 import { finopsRoutes } from './modules/finops/finops.routes';
+import { contractRoutes } from './modules/contracts/contracts.routes';
 import { authenticate } from './middleware/authenticate';
 
 async function buildApp() {
   const app = Fastify({ logger: false });
 
   await app.register(cookie);
+  await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } }); // 10 MB
   await app.register(cors, {
     origin: config.CORS_ORIGIN,
     credentials: true,
@@ -51,6 +55,7 @@ async function buildApp() {
   await app.register(optimizationRoutes, { prefix: '/api/v1/optimize' });
   await app.register(templateRoutes, { prefix: '/api/v1/templates' });
   await app.register(finopsRoutes, { prefix: '/api/v1/finops' });
+  await app.register(contractRoutes, { prefix: '/api/v1/contracts' });
 
   // Execution detail (metadata + task + agent info)
   app.get('/api/v1/executions/:execId', { preHandler: [authenticate] }, async (req: any) => {
@@ -78,25 +83,38 @@ async function buildApp() {
   // Health check
   app.get('/health', async () => ({ status: 'ok', ts: Date.now() }));
 
+  // Capture unhandled 5xx errors to Sentry before responding
+  app.setErrorHandler(async (error, request, reply) => {
+    const statusCode = (error as any).statusCode ?? 500;
+    if (statusCode >= 500) {
+      Sentry.captureException(error, {
+        extra: { url: request.url, method: request.method },
+      });
+      logger.error({ err: error, url: request.url }, 'Unhandled route error');
+    }
+    await reply.status(statusCode).send({ error: (error as any).message ?? 'Internal Server Error' });
+  });
+
   return app;
 }
 
 async function main() {
   const app = await buildApp();
 
-  // Wrap Fastify server in raw HTTP server for Socket.io
+  // Single HTTP server hosts both Fastify (REST) and Socket.io (WS) on one port.
+  // Railway (and any reverse proxy) only needs to expose one port per service.
   const httpSrv = createServer((req, res) => {
     app.server.emit('request', req, res);
   });
 
   createSocketServer(httpSrv, config.CORS_ORIGIN);
 
-  await app.listen({ port: config.PORT, host: config.HOST });
-  httpSrv.listen(config.PORT + 1, () => {
-    logger.info(`🔌 Socket.io server listening on port ${config.PORT + 1}`);
-  });
+  // Initialize Fastify routes/plugins without binding its own listener
+  await app.ready();
 
-  logger.info(`🚀 API server running at http://${config.HOST}:${config.PORT}`);
+  httpSrv.listen(config.PORT, config.HOST, () => {
+    logger.info(`🚀 API + Socket.io running at http://${config.HOST}:${config.PORT}`);
+  });
 }
 
 main().catch((err) => {

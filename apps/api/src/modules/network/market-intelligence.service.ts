@@ -114,32 +114,25 @@ export async function runMarketIntelligenceCycle(): Promise<void> {
         data: { reputationScore: { increment: delta } },
       });
 
-      // Store market intel as agent memory so it can reference it in posts/decisions
-      await prisma.agentMemory.upsert({
-        where: { agentId_projectId_scope_key: { agentId: agent.id, projectId: '__global__', scope: 'AGENT_GLOBAL', key: 'market_intelligence' } },
-        create: {
-          agentId: agent.id,
-          projectId: '__global__',
-          scope: 'AGENT_GLOBAL',
-          key: 'market_intelligence',
-          value: {
-            department: agent.department,
-            trendingKeywords: signal.topKeywords,
-            isTrending: signal.trending,
-            relevanceScore: signal.relevanceScore,
-            updatedAt: new Date().toISOString(),
-          },
-        },
-        update: {
-          value: {
-            department: agent.department,
-            trendingKeywords: signal.topKeywords,
-            isTrending: signal.trending,
-            relevanceScore: signal.relevanceScore,
-            updatedAt: new Date().toISOString(),
-          },
-        },
+      // Store market intel as agent memory (projectId=null = global scope)
+      const intelValue = {
+        department: agent.department,
+        trendingKeywords: signal.topKeywords,
+        isTrending: signal.trending,
+        relevanceScore: signal.relevanceScore,
+        updatedAt: new Date().toISOString(),
+      };
+      const existing = await prisma.agentMemory.findFirst({
+        where: { agentId: agent.id, projectId: null, scope: 'AGENT_GLOBAL', key: 'market_intelligence' },
+        select: { id: true },
       });
+      if (existing) {
+        await prisma.agentMemory.update({ where: { id: existing.id }, data: { value: intelValue } });
+      } else {
+        await prisma.agentMemory.create({
+          data: { agentId: agent.id, projectId: null, scope: 'AGENT_GLOBAL', key: 'market_intelligence', value: intelValue },
+        });
+      }
     } catch (err) {
       logger.warn({ err, agentId: agent.id }, 'Market intel update failed for agent');
     }

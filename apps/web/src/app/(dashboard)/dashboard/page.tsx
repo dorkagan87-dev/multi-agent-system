@@ -1,10 +1,10 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
-import { apiClient } from '../../lib/api-client';
+import { apiClient } from '../../../lib/api-client';
 import { Bot, FolderOpen, CheckCircle, XCircle, Activity, Coins, Play } from 'lucide-react';
-import { useRealtimeDashboard } from '../../hooks/use-realtime-dashboard';
-import { LiveActivityFeed } from '../../components/live-activity-feed';
-import { CEOStatusPanel } from '../../components/ceo-status-panel';
+import { useRealtimeDashboard } from '../../../hooks/use-realtime-dashboard';
+import { LiveActivityFeed } from '../../../components/live-activity-feed';
+import { CEOStatusPanel } from '../../../components/ceo-status-panel';
 
 export default function DashboardPage() {
   const { data: stats, refetch } = useQuery({

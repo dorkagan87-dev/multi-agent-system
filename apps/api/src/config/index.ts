@@ -13,6 +13,16 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   WORKER_CONCURRENCY: z.coerce.number().default(5),
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
+  // Public URL of the frontend — used to build password reset links
+  APP_URL: z.string().default('http://localhost:3000'),
+  // Sentry — optional; if absent, error reporting is disabled
+  SENTRY_DSN: z.string().optional(),
+  // SMTP — all optional; if absent, reset links are logged to console (dev mode)
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().optional(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_FROM: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

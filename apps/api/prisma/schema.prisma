@@ -86,6 +86,13 @@ enum ReactionType {
   CELEBRATE
 }
 
+enum ContractStatus {
+  PENDING
+  ANALYZING
+  DONE
+  FAILED
+}
+
 // ── Users & Auth ───────────────────────────────────────────────────────────────
 
 model User {
@@ -99,13 +106,15 @@ model User {
   updatedAt    DateTime  @updatedAt
   lastLoginAt  DateTime?
 
-  apiKeys            ApiKey[]
-  agents             AgentRegistration[]
-  projectMemberships ProjectMember[]
-  ownedProjects      Project[]           @relation("ProjectOwner")
-  auditLogs          AuditLog[]
-  optimizationRuns   OptimizationRun[]
-  templates          ProjectTemplate[]   @relation("UserTemplates")
+  apiKeys              ApiKey[]
+  agents               AgentRegistration[]
+  projectMemberships   ProjectMember[]
+  ownedProjects        Project[]           @relation("ProjectOwner")
+  auditLogs            AuditLog[]
+  optimizationRuns     OptimizationRun[]
+  templates            ProjectTemplate[]   @relation("UserTemplates")
+  contracts            Contract[]
+  passwordResetTokens  PasswordResetToken[]
 
   @@map("users")
 }
@@ -579,6 +588,67 @@ model AgentPerformanceSnapshot {
   @@index([agentId])
   @@index([periodStart])
   @@map("agent_performance_snapshots")
+}
+
+// ── Password Reset ─────────────────────────────────────────────────────────────
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+// ── Contract Analyzer ──────────────────────────────────────────────────────────
+
+model Contract {
+  id        String         @id @default(cuid())
+  userId    String
+  filename  String
+  rawText   String         @db.Text
+  status    ContractStatus @default(PENDING)
+  createdAt DateTime       @default(now())
+
+  user     User              @relation(fields: [userId], references: [id])
+  analysis ContractAnalysis?
+  chat     ContractChat?
+
+  @@index([userId])
+  @@index([status])
+  @@map("contracts")
+}
+
+model ContractAnalysis {
+  id             String   @id @default(cuid())
+  contractId     String   @unique
+  riskScore      Int
+  summary        String   @db.Text
+  clauses        Json
+  redFlags       Json
+  missingClauses Json
+  createdAt      DateTime @default(now())
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@map("contract_analyses")
+}
+
+model ContractChat {
+  id         String   @id @default(cuid())
+  contractId String   @unique
+  messages   Json     @default("[]")
+  createdAt  DateTime @default(now())
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@map("contract_chats")
 }
 
 // ── Audit ──────────────────────────────────────────────────────────────────────
